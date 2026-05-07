@@ -91,8 +91,9 @@ export interface DetailResponse {
   content: string;
   /** which side this snapshot is for. */
   side: "before" | "after";
-  /** 'pretty' (readPretty), 'html' (innerHTML), or 'raw' (rrweb json source). */
-  format: "pretty" | "html" | "raw";
+  /** 'pretty' (readPretty), 'html' (innerHTML, with style/svg collapsed),
+   *  'raw-html' (innerHTML with style/svg verbatim), or 'raw' (rrweb json source). */
+  format: "pretty" | "html" | "raw-html" | "raw";
 }
 
 export interface DiffResponse {
@@ -134,7 +135,7 @@ export interface DaemonRequest_List {
 export interface DaemonRequest_Detail {
   kind: "detail";
   id: number;
-  format: "pretty" | "html" | "raw";
+  format: "pretty" | "html" | "raw-html" | "raw";
   side: "before" | "after";
 }
 export interface DaemonRequest_Diff {

@@ -134,7 +134,12 @@ export function buildIndex(events: RRWebEvent[]): RRWebIndex {
  *  the most recent FullSnapshot at-or-before `id` and re-applies in sequence
  *  — html is requested rarely and we don't want to keep N copies in memory.
  */
-export function renderHtmlAt(events: RRWebEvent[], targetIdInclusive: number, includeTarget: boolean): string {
+export function renderHtmlAt(
+  events: RRWebEvent[],
+  targetIdInclusive: number,
+  includeTarget: boolean,
+  raw = false,
+): string {
   // find FullSnapshot index <= targetIdInclusive (1-based)
   const target = targetIdInclusive - 1;
   let snapIdx = -1;
@@ -147,5 +152,5 @@ export function renderHtmlAt(events: RRWebEvent[], targetIdInclusive: number, in
   for (let i = snapIdx + 1; i <= stop; i++) {
     try { applyEvent(state, events[i]); } catch { /* ignore */ }
   }
-  return renderHtml(state.doc);
+  return renderHtml(state.doc, { raw });
 }

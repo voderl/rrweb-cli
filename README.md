@@ -10,9 +10,17 @@ Given an rrweb recording (an array of events, or `{ events: [...] }`):
 - Reconstructs the DOM tree using the official `rrweb-snapshot` package on top
   of a `jsdom` Document, then applies each incremental mutation in order.
 - After every event, formats the resulting DOM into a *readPretty* tree —
-  a line-per-block, innerText-style rendering meant for diffing.
+  a hierarchical, innerText-leaning rendering that drops decorative wrappers
+  but preserves semantic attributes (`role`, `aria-*`, `disabled`, `href`,
+  form `placeholder` / `value`, …) and atomic tags (`img`, `svg`, …).
 - Computes a unified-style diff between the readPretty tree before and after
   each event.
+- For events that don't move the DOM but still address a node (Click, Focus,
+  Scroll, …), produces a unified-diff-style locator that marks the target
+  line with `[Target]`.
+- Folds noise: consecutive same-source events within a 1s gap merge into one
+  row (`Mutation(×7)`); chains of locator events on the *same target* merge
+  into `MouseDown+Focus+MouseUp+Click`.
 
 Because reconstructing the DOM for a long recording is expensive, large files
 are served by a **per-file daemon** keyed by `<absolute path, size, mtime>`
@@ -69,15 +77,19 @@ npm run build
 ## Usage
 
 ```bash
-# default: list events (drops MouseMove + drops empty-diff events,
-# then merges consecutive same-name runs)
+# default: list events that have a readPretty diff or are a key gesture
+# (Click / DblClick / ContextMenu); other no-diff events (MouseDown,
+# MouseUp, Focus, Blur, Scroll, MouseMove, …) are filtered out, and
+# adjacent same-name runs are merged.
 node dist/cli.js -f recording.json
 
-# show every event (no merging, no diff filter)
+# include everything except MouseMove (Mouse/Focus/Blur/Scroll all show up)
 node dist/cli.js -f recording.json list --all
-node dist/cli.js -f recording.json list --mousemove
 
-# filter (any explicit --id disables merging)
+# also include MouseMove
+node dist/cli.js -f recording.json list --all --mousemove
+
+# filter (an explicit --id disables merging — exact rows back)
 node dist/cli.js -f recording.json list -e Input,Click
 node dist/cli.js -f recording.json list --time 1.0-5.0
 node dist/cli.js -f recording.json list --id 9,12
@@ -88,11 +100,14 @@ node dist/cli.js -f recording.json detail 9             # readPretty AFTER the e
 node dist/cli.js -f recording.json detail 9 --before    # readPretty BEFORE the event
 node dist/cli.js -f recording.json detail 9 --html      # innerHTML form
 node dist/cli.js -f recording.json detail 9 --raw       # raw rrweb event json
-node dist/cli.js -f recording.json diff 9               # full unified diff
-node dist/cli.js -f recording.json diff 9-16            # range diff (before 9 → after 16)
 
-# json output everywhere
-node dist/cli.js -f recording.json --format json list
+# unified diffs (default: readPretty)
+node dist/cli.js -f recording.json diff 9               # diff for one event
+node dist/cli.js -f recording.json diff 9-16            # range diff (before 9 → after 16)
+node dist/cli.js -f recording.json diff 9 --html        # diff the innerHTML form instead
+
+# json output (list only — detail/diff are always text)
+node dist/cli.js -f recording.json list --format json
 
 # daemon controls
 node dist/cli.js daemon-clear                            # stop & cleanup
@@ -102,10 +117,10 @@ node dist/cli.js daemon-clear                            # stop & cleanup
 
 | column | meaning |
 | ------ | ------- |
-| `id`   | 1-based event id (matches the input array index + 1) |
-| `event`| rrweb event-type name. For `IncrementalSnapshot` it shows the source (`Mutation`, `Input`, `Scroll`, …); MouseInteraction shows the sub-type (`Click`, `Focus`, `Blur`, …). |
-| `time` | seconds since the first event (`0.000s` is the first event) |
-| `diff` | unified-style diff of the readPretty tree, **truncated to 5 body lines**. Use `diff <id>` to print the full diff. |
+| `id`   | 1-based event id (matches the input array index + 1). Merged rows show as a range `9-16`. |
+| `event`| rrweb event-type name. For `IncrementalSnapshot` it shows the source (`Mutation`, `Input`, `Scroll`, …); MouseInteraction shows the sub-type (`Click`, `Focus`, `Blur`, …). Merged rows show `Mutation(×7)` for same-source runs and `MouseDown+Focus+MouseUp+Click` for same-target locator chains. |
+| `time` | seconds since the first event (`0.000s` is the first event). Merged rows show a range `2.320-3.626s`. |
+| `diff` | unified-style diff of the readPretty tree. When the change is ≤5 +/- lines it's shown in full; otherwise it's truncated to ~5 body lines with a `(+N more line(s); use \`diff <id>\` for the full diff)` hint. Locator rows (Click/Focus/...) show a `[Target]` marker on the target line and are never truncated. |
 
 ## Daemon details
 
@@ -125,11 +140,12 @@ src/
   daemon.ts       # IPC server, idle timeout, request handler
   protocol.ts     # length-prefixed JSON over a unix socket
   version.ts      # file-version hashing + tmpdir paths
-  index-build.ts  # walk events; build DOM, pretty trees, diffs
+  index-build.ts  # walk events; build DOM, pretty trees, diffs, locators
   dom.ts          # rrweb-snapshot rebuild + mutation/input applier
-  pretty.ts       # readPretty + innerHTML rendering
+  pretty.ts       # readPretty + innerHTML rendering (with line→element owners)
   diff.ts         # LCS-based line diff
-  filter.ts       # list / tree / diff handlers
+  locator.ts      # `[Target]` locator diff for non-mutating events
+  filter.ts       # list / detail / diff handlers + row merging
   event-name.ts   # rrweb event-type → label
   text.ts         # text-mode rendering of responses
   types.ts        # shared types

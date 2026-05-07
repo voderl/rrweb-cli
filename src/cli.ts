@@ -119,7 +119,6 @@ function buildListSummary(filter: FilterOptions): string {
 
 interface RootOpts {
   file?: string;
-  format?: string;
 }
 
 function requireFile(file: string | undefined): string {
@@ -141,8 +140,7 @@ async function main() {
     .name("rrweb-cli")
     .description("Agent-friendly CLI for parsing/listing/diffing rrweb session recordings.")
     .version("0.1.0")
-    .option("-f, --file <path>", "rrweb recording (json) file path")
-    .option("--format <fmt>", "output format: text (default) or json", "text");
+    .option("-f, --file <path>", "rrweb recording (json) file path");
 
   // ---- list (default)
   const listCmd = program
@@ -155,11 +153,12 @@ async function main() {
     .option("--time <range>", "time range in seconds, e.g. '1.0-3.5', '2-', '-5'")
     .option("--mousemove", "include MouseMove/TouchMove/Drag events", false)
     .option("--all", "list every event except MouseMove (use --mousemove to include MouseMove too)", false)
+    .option("--format <fmt>", "output format: text (default) or json", "text")
     .option("-p, --page <n>", "page number (default 1)", (v) => parseInt(v, 10))
     .option("--page-size <n>", "page size (default 50)", (v) => parseInt(v, 10));
   listCmd.action(async (opts, command: Command) => {
     const root = command.parent!.opts<RootOpts>();
-    const format = parseFormat(root.format);
+    const format = parseFormat(opts.format);
     try {
       const file = requireFile(root.file);
       const range = parseTimeRange(opts.time);
@@ -188,27 +187,32 @@ async function main() {
     .description(
       "show the state for a single event. defaults to readPretty after the event was applied.",
     )
-    .option("--html", "show the innerHTML form instead of readPretty")
-    .option("--raw", "show the raw rrweb event json (overrides --html)")
+    .option("--html", "show the innerHTML form (style/svg collapsed) instead of readPretty")
+    .option("--raw-html", "like --html but keep <style> bodies and <svg> subtrees verbatim")
+    .option("--raw", "show the raw rrweb event json (overrides --html/--raw-html)")
     .option("--before", "show the state BEFORE this event was applied (default: after)")
     .action(async (idStr: string, opts, command: Command) => {
       const root = command.parent!.opts<RootOpts>();
-      const format = parseFormat(root.format);
       try {
         const file = requireFile(root.file);
         const id = parseInt(idStr, 10);
         if (Number.isNaN(id) || id <= 0 || !/^\d+$/.test(idStr.trim())) {
-          printError(format, `invalid id: "${idStr}". expected a positive integer.`);
+          printError("text", `invalid id: "${idStr}". expected a positive integer.`);
           return;
         }
-        const fmt: "pretty" | "html" | "raw" = opts.raw ? "raw" : opts.html ? "html" : "pretty";
+        const fmt: "pretty" | "html" | "raw-html" | "raw" = opts.raw
+          ? "raw"
+          : opts.rawHtml
+            ? "raw-html"
+            : opts.html
+              ? "html"
+              : "pretty";
         const side: "before" | "after" = opts.before ? "before" : "after";
         const resp = await sendRequest(file, { kind: "detail", id, format: fmt, side });
-        if (!resp.ok) { printError(format, resp.error); return; }
-        if (format === "json") printJson(resp);
-        else printText(renderDetail(resp.data as DetailResponse));
+        if (!resp.ok) { printError("text", resp.error); return; }
+        printText(renderDetail(resp.data as DetailResponse));
       } catch (e) {
-        printError(format, (e as Error).message);
+        printError("text", (e as Error).message);
       }
     });
 
@@ -219,23 +223,21 @@ async function main() {
     .option("--html", "diff the raw innerHTML instead of the readPretty tree")
     .action(async (idStr: string, opts, command: Command) => {
       const root = command.parent!.opts<RootOpts>();
-      const format = parseFormat(root.format);
       try {
         const file = requireFile(root.file);
         let startId: number, endId: number;
         try {
           ({ startId, endId } = parseIdRange(idStr));
         } catch (e) {
-          printError(format, (e as Error).message);
+          printError("text", (e as Error).message);
           return;
         }
         const diffFormat: "pretty" | "html" = opts.html ? "html" : "pretty";
         const resp = await sendRequest(file, { kind: "diff", id: startId, endId, format: diffFormat });
-        if (!resp.ok) { printError(format, resp.error); return; }
-        if (format === "json") printJson(resp);
-        else printText(renderDiff(resp.data as DiffResponse));
+        if (!resp.ok) { printError("text", resp.error); return; }
+        printText(renderDiff(resp.data as DiffResponse));
       } catch (e) {
-        printError(format, (e as Error).message);
+        printError("text", (e as Error).message);
       }
     });
 
@@ -243,18 +245,12 @@ async function main() {
   program
     .command("daemon-clear")
     .description("stop all running daemons and clear cached socket/pid/log files")
-    .action(async (_opts, command: Command) => {
-      const root = command.parent!.opts<RootOpts>();
-      const format = parseFormat(root.format);
+    .action(async () => {
       const report = await clearAllDaemons();
-      if (format === "json") {
-        printJson({ ok: true, data: report });
-      } else {
-        printText(
-          `found ${report.found} daemon(s) · stopped ${report.stopped} · removed ${report.removed_files} file(s)` +
-            (report.errors.length > 0 ? "\n\nerrors:\n  " + report.errors.join("\n  ") : ""),
-        );
-      }
+      printText(
+        `found ${report.found} daemon(s) · stopped ${report.stopped} · removed ${report.removed_files} file(s)` +
+          (report.errors.length > 0 ? "\n\nerrors:\n  " + report.errors.join("\n  ") : ""),
+      );
     });
 
   // ---- internal: spawn-as-daemon entry

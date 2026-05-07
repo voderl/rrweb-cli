@@ -59,8 +59,7 @@ export function renderList(resp: ListResponse, summary: string): string {
 }
 
 export function renderDetail(resp: DetailResponse): string {
-  const head = `id=${resp.id}  event=${resp.event}  time=${resp.time.toFixed(3)}s  format=${resp.format}  side=${resp.side}`;
-  return `${head}\n${resp.content || "(empty)"}`;
+  return resp.content || "(empty)";
 }
 
 export function renderDiff(resp: DiffResponse): string {

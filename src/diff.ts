@@ -22,7 +22,8 @@ function lcsOps(a: string[], b: string[]): Op[] {
   const n = a.length;
   const m = b.length;
   // For very long inputs we fall back to a coarse diff to avoid O(n*m) blowup.
-  if (n * m > 4_000_000) {
+  // 64M cells ≈ 256MB Uint32Array — fine for ~8k×8k inputs on default Node heap.
+  if (n * m > 64_000_000) {
     return coarseDiff(a, b);
   }
   // dp[i][j] = LCS length of a[i..] and b[j..]

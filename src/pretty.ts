@@ -316,16 +316,26 @@ const VOID_HTML_TAGS = new Set([
 
 const RAW_TEXT_TAGS = new Set(["script", "style", "noscript", "template"]);
 
-export function renderHtml(doc: Document): string {
+export interface RenderHtmlOptions {
+  /** when true, <style> bodies and <svg> subtrees are emitted verbatim.
+   *  default false: collapse them to length-tagged placeholders so diffs
+   *  stay readable. */
+  raw?: boolean;
+}
+
+export function renderHtml(doc: Document, opts: RenderHtmlOptions = {}): string {
   const out: string[] = ["<!DOCTYPE html>"];
   const root = doc.documentElement;
   if (!root) return "";
-  serializeElement(root, 0, out);
+  serializeElement(root, 0, out, !!opts.raw);
   return out.join("\n");
 }
 
-function serializeElement(el: Element, depth: number, out: string[]): void {
+function serializeElement(el: Element, depth: number, out: string[], raw: boolean): void {
   const tag = (el.tagName || "").toLowerCase();
+  // <noscript> is rendered fallback content for non-JS clients; in a recorded
+  // session it's never executed and just adds noise. drop entirely unless raw.
+  if (tag === "noscript" && !raw) return;
   const indent = "  ".repeat(depth);
   const attrs = attrsToString(el);
   if (VOID_HTML_TAGS.has(tag)) {
@@ -339,9 +349,26 @@ function serializeElement(el: Element, depth: number, out: string[]): void {
       out.push(`${indent}<${tag}${attrs}></${tag}>`);
       return;
     }
+    if (tag === "style" && !raw) {
+      // stylesheets are huge and rarely the subject of inspection; collapse
+      // their body to a length-tagged placeholder so downstream diffs still
+      // notice content changes without ballooning the output.
+      out.push(`${indent}<${tag}${attrs}>/* ${inner.length} chars */</${tag}>`);
+      return;
+    }
     out.push(`${indent}<${tag}${attrs}>`);
     for (const line of inner.split("\n")) out.push(`${indent}  ${line}`);
     out.push(`${indent}</${tag}>`);
+    return;
+  }
+  // collapse svg subtrees: their structure is rarely the user's target and
+  // a single icon often spans dozens of <path>/<g> nodes. report element
+  // count + serialized length so real changes still alter the placeholder.
+  if (tag === "svg" && !raw) {
+    const stats = svgStats(el);
+    out.push(
+      `${indent}<${tag}${attrs}><!-- ${stats.elements} elements, ${stats.chars} chars --></${tag}>`,
+    );
     return;
   }
   const children = Array.from(el.childNodes);
@@ -361,12 +388,34 @@ function serializeElement(el: Element, depth: number, out: string[]): void {
       const t = (c as Text).data.replace(/\s+/g, " ").trim();
       if (t) out.push(`${"  ".repeat(depth + 1)}${escapeText(t)}`);
     } else if (c.nodeType === 1) {
-      serializeElement(c as Element, depth + 1, out);
+      serializeElement(c as Element, depth + 1, out, raw);
     } else if (c.nodeType === 8) {
       out.push(`${"  ".repeat(depth + 1)}<!--${(c as Comment).data}-->`);
     }
   }
   out.push(`${indent}</${tag}>`);
+}
+
+function svgStats(el: Element): { elements: number; chars: number } {
+  // length of the outerHTML-ish projection — cheap fingerprint that flips
+  // whenever any attribute or text inside the svg changes.
+  let elements = 0;
+  let chars = 0;
+  const walk = (n: Node) => {
+    if (n.nodeType === 1) {
+      elements++;
+      const e = n as Element;
+      chars += (e.tagName || "").length + 2;
+      for (const a of Array.from(e.attributes)) {
+        chars += a.name.length + a.value.length + 4;
+      }
+      for (const c of Array.from(e.childNodes)) walk(c);
+    } else if (n.nodeType === 3) {
+      chars += ((n as Text).data || "").length;
+    }
+  };
+  walk(el);
+  return { elements, chars };
 }
 
 function attrsToString(el: Element): string {

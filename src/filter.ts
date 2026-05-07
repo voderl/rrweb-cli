@@ -216,7 +216,7 @@ function round3(n: number): number {
 export function getDetail(
   idx: RRWebIndex,
   id: number,
-  format: "pretty" | "html" | "raw",
+  format: "pretty" | "html" | "raw-html" | "raw",
   side: "before" | "after",
 ): DetailResponse {
   const e = idx.indexed[id - 1];
@@ -228,8 +228,9 @@ export function getDetail(
   } else if (format === "pretty") {
     content = side === "before" ? e.prettyBefore : e.prettyAfter;
   } else {
-    // html: re-walk to compute the requested side
-    content = renderHtmlAt(idx.events, id, side === "after");
+    // html / raw-html: re-walk to compute the requested side. raw-html keeps
+    // <style> bodies and <svg> subtrees verbatim; html collapses them.
+    content = renderHtmlAt(idx.events, id, side === "after", format === "raw-html");
   }
 
   return {

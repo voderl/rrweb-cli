@@ -92,7 +92,7 @@ async function waitForSocket(socketPath: string, timeoutMs: number): Promise<voi
   throw new Error(`daemon did not become ready within ${timeoutMs}ms`);
 }
 
-export const DEFAULT_DAEMON_THRESHOLD_BYTES = 4 * 1024 * 1024;
+export const DEFAULT_DAEMON_THRESHOLD_BYTES = 1 * 1024 * 1024;
 
 export async function sendRequest(
   filePath: string,
