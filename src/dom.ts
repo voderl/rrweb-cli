@@ -12,6 +12,11 @@ export interface DomState {
   doc: Document;
   mirror: Mirror;
   cache: ReturnType<typeof createCache>;
+  /** detached documents that host the contents of attached iframes. keyed
+   *  by the iframe element's rrweb node id. these never touch the main doc
+   *  — readPretty treats <iframe> as atomic — but we keep them so that
+   *  mirror lookups for iframe-internal nodes still resolve. */
+  iframeDocs: Map<number, Document>;
 }
 
 export function createInitialDom(fullSnapshotEvent: RRWebEvent): DomState {
@@ -33,7 +38,20 @@ export function createInitialDom(fullSnapshotEvent: RRWebEvent): DomState {
     cache,
   });
 
-  return { dom, doc, mirror, cache };
+  return { dom, doc, mirror, cache, iframeDocs: new Map() };
+}
+
+function getOrCreateIframeDoc(state: DomState, iframeNodeId: number): Document {
+  const existing = state.iframeDocs.get(iframeNodeId);
+  if (existing) return existing;
+  const sub = new JSDOM("<!DOCTYPE html><html><head></head><body></body></html>", {
+    runScripts: undefined,
+    pretendToBeVisual: false,
+  });
+  const subDoc = sub.window.document;
+  while (subDoc.firstChild) subDoc.removeChild(subDoc.firstChild);
+  state.iframeDocs.set(iframeNodeId, subDoc);
+  return subDoc;
 }
 
 /** Apply a single rrweb event to the dom state. Best-effort: unsupported
@@ -140,6 +158,33 @@ function applyMutation(state: DomState, data: MutationData) {
       }
       const nextSibling =
         add.nextId != null ? mirror.getNode(add.nextId) : null;
+
+      // iframe attach: the add's node is a Document (type 0) and parent is
+      // an <iframe>. We must NOT build it into the main doc — rrweb-snapshot
+      // would replace the main <html> root. Instead build into a per-iframe
+      // detached document so mirror entries for the iframe's internal nodes
+      // exist (later mutations targeting those ids resolve correctly), but
+      // the main doc is untouched. readPretty treats <iframe> as atomic so
+      // its contents are never rendered into the main pretty tree anyway.
+      const isDocAttach =
+        add.node && add.node.type === 0 &&
+        parent.nodeType === 1 &&
+        ((parent as Element).tagName || "").toLowerCase() === "iframe";
+      if (isDocAttach) {
+        const subDoc = getOrCreateIframeDoc(state, add.parentId);
+        try {
+          buildNodeWithSN(add.node, {
+            doc: subDoc,
+            mirror,
+            hackCss: false,
+            cache,
+            skipChild: false,
+          });
+        } catch {
+          /* ignore: iframe internals are best-effort */
+        }
+        continue;
+      }
 
       const built = buildNodeWithSN(add.node, {
         doc: doc as Document,

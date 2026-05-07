@@ -163,7 +163,7 @@ function renderForm(el: Element, attrs: AttrPair[]): Block {
     const ph = placeholder ? ` placeholder=${quote(placeholder)}` : "";
     const extra = fmtAttrs(attrsToShow);
     const extraInner = extra ? " " + extra.slice(1, -1) : "";
-    const v = collapseWS(String(value || el.textContent || ""));
+    const v = collapseWS(String(value || visibleText(el)));
     if (!v) return single(`textarea[${ph.trim()}${extraInner}]`.replace("[ ", "["));
     return single(`textarea[${(ph + extraInner).trim()}]: ${v}`.replace("[]: ", ": "));
   }
@@ -173,16 +173,35 @@ function renderForm(el: Element, attrs: AttrPair[]): Block {
     return single(`select${extra}: ${collapseWS(String(v))}`.trimEnd());
   }
   if (tag === "button") {
-    const text = collapseWS(el.textContent || "");
+    const text = collapseWS(visibleText(el));
     const extra = fmtAttrs(attrsToShow);
     return single(`button${extra}${text ? `: ${text}` : ""}`);
   }
   if (tag === "option") {
-    const text = collapseWS(el.textContent || "");
+    const text = collapseWS(visibleText(el));
     const extra = fmtAttrs(attrsToShow);
     return single(`option${extra}${text ? `: ${text}` : ""}`);
   }
   return single(tag);
+}
+
+/** Like Node.textContent, but skips <script>/<style>/<svg> subtrees so that
+ *  a button containing an inline SVG spinner doesn't pull keyframe CSS into
+ *  the readPretty label. svg internals are decorative for our purposes. */
+const TEXT_OPAQUE_TAGS = new Set(["script", "style", "svg", "noscript", "template"]);
+function visibleText(el: Element): string {
+  let out = "";
+  const walk = (n: Node) => {
+    if (n.nodeType === 1) {
+      const t = ((n as Element).tagName || "").toLowerCase();
+      if (TEXT_OPAQUE_TAGS.has(t)) return;
+      for (const c of Array.from(n.childNodes)) walk(c);
+    } else if (n.nodeType === 3) {
+      out += (n as Text).data;
+    }
+  };
+  for (const c of Array.from(el.childNodes)) walk(c);
+  return out;
 }
 
 function renderAtomic(el: Element, attrs: AttrPair[]): Block {
