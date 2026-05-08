@@ -9,7 +9,19 @@ import {
   ListResponse,
 } from "./types";
 
-const LIST_DIFF_PREVIEW_LINES = 5;
+const LIST_DIFF_PREVIEW_LINES = 3;
+
+// Strip ` ` (context) lines from a unified diff for the list preview, leaving
+// only +/- lines. Bare `@@` headers (no body left under them) are dropped too.
+function stripDiffContext(diff: string): string {
+  if (!diff) return "";
+  const lines = diff.split("\n");
+  const out: string[] = [];
+  for (const ln of lines) {
+    if (ln.startsWith("+") || ln.startsWith("-")) out.push(ln);
+  }
+  return out.join("\n");
+}
 
 interface Row {
   /** indices into idx.indexed, in order. */
@@ -165,9 +177,10 @@ export function listEvents(idx: RRWebIndex, filter: FilterOptions): ListResponse
       dl = r.changeLines;
     }
 
+    const stripped = stripDiffContext(diff);
     const trunc = dl <= LIST_DIFF_PREVIEW_LINES
-      ? { text: diff, truncated: false, droppedLines: 0 }
-      : truncateDiff(diff, LIST_DIFF_PREVIEW_LINES);
+      ? { text: stripped, truncated: false, droppedLines: 0 }
+      : truncateDiff(stripped, LIST_DIFF_PREVIEW_LINES);
     out.push({
       id: first.id,
       endId: row.members.length > 1 ? last.id : undefined,
