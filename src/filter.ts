@@ -144,37 +144,30 @@ export function listEvents(idx: RRWebIndex, filter: FilterOptions): ListResponse
 
   const out: ListEntry[] = [];
   for (const row of rows) {
-    let diff: string;
-    let dl: number;
-    let useLocator = false;
-    const firstHasLocator = row.members[0].locator != null;
+    const first = row.members[0];
+    const last = row.members[row.members.length - 1];
+    const firstHasLocator = first.locator != null;
+
+    let diff = "";
+    let dl = 0;
+    let target: ListEntry["target"];
+
     if (firstHasLocator) {
-      // locator row (single or merged same-target chain): show the locator
-      // diff verbatim. all members of a merged locator row share the same
-      // target so any member's locator is equivalent.
-      diff = row.members[0].locator!;
-      dl = 0;
-      useLocator = true;
+      // locator-only row (single or merged same-target chain). All members
+      // of a merged chain share the target, so any member's locator works.
+      target = first.locator!;
     } else if (row.members.length === 1) {
-      const m = row.members[0];
-      diff = m.diff;
-      dl = m.diffLines;
-    } else if (row.prettyBefore === row.prettyAfter) {
-      diff = "";
-      dl = 0;
-    } else {
+      diff = first.diff;
+      dl = first.diffLines;
+    } else if (row.prettyBefore !== row.prettyAfter) {
       const r = diffLines(row.prettyBefore, row.prettyAfter, 2);
       diff = r.text;
       dl = r.changeLines;
     }
 
-    // truncation: locator rows are always shown in full; for true diffs we
-    // skip truncation when the +/- count is already ≤ preview cap.
-    const trunc = useLocator || dl <= LIST_DIFF_PREVIEW_LINES
+    const trunc = dl <= LIST_DIFF_PREVIEW_LINES
       ? { text: diff, truncated: false, droppedLines: 0 }
       : truncateDiff(diff, LIST_DIFF_PREVIEW_LINES);
-    const first = row.members[0];
-    const last = row.members[row.members.length - 1];
     out.push({
       id: first.id,
       endId: row.members.length > 1 ? last.id : undefined,
@@ -184,6 +177,7 @@ export function listEvents(idx: RRWebIndex, filter: FilterOptions): ListResponse
       diffPreview: trunc.text,
       diffLines: dl,
       diffPreviewDropped: trunc.droppedLines,
+      target,
     });
   }
 

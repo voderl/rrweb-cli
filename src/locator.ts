@@ -1,21 +1,19 @@
 // For events that don't mutate the DOM (Click, MouseDown, MouseUp, Focus,
 // Blur, Scroll, …) we still want to communicate *which element was acted on*.
-// We render the readPretty tree of the current state, find the line that
-// represents the target element, and produce a unified diff of "tree" vs
-// "tree with [Target] appended to the target line". The result is a normal
-// unified diff — same algorithm, same formatting as real DOM-mutation diffs.
+// We render the readPretty tree of the current state and locate the line that
+// represents the target element. Output is a structured LocatorInfo — line
+// number + readPretty description of that line. When the target is folded
+// out of the tree, we fall back to the nearest rendered ancestor.
 
 import { Mirror } from "rrweb-snapshot";
-import { diffLines } from "./diff";
 import { renderPrettyWithOwners } from "./pretty";
-import { EventType, IncrementalSource, MouseInteractions, RRWebEvent } from "./types";
+import { EventType, IncrementalSource, LocatorInfo, MouseInteractions, RRWebEvent } from "./types";
 
-const TARGET_TAG = "[Target]";
-
-/** Given the dom state at the time of the event, return a unified diff that
- *  pinpoints the event's target element by appending `[Target]` to its line.
- *  Returns null when the event has no addressable target. */
-export function buildLocator(ev: RRWebEvent, mirror: Mirror, doc: Document): string | null {
+/** Given the dom state at the time of the event, return a one-line locator
+ *  pointing at the event's target element. Returns null when the event has
+ *  no addressable target or the target isn't reachable from the rendered
+ *  tree. */
+export function buildLocator(ev: RRWebEvent, mirror: Mirror, doc: Document): LocatorInfo | null {
   const targetId = extractTargetId(ev);
   if (targetId == null) return null;
 
@@ -31,38 +29,18 @@ export function buildLocator(ev: RRWebEvent, mirror: Mirror, doc: Document): str
   if (!text) return null;
   const lines = text.split("\n");
 
-  // Build the "after" view: the same readPretty tree with [Target] appended
-  // to the line that represents this element. If the element was collapsed
-  // away by readPretty's folding rules, fall back to inserting a virtual
-  // line under the closest rendered ancestor.
-  const after = buildTargetedLines(lines, owners, targetEl);
-  if (!after) return null;
-
-  const r = diffLines(text, after.join("\n"), 2);
-  return r.text || null;
-}
-
-function buildTargetedLines(
-  lines: string[],
-  owners: (Element | null)[],
-  target: Element,
-): string[] | null {
-  // direct hit: target's own line is in the tree
+  // direct hit: target has its own readPretty line.
   for (let i = 0; i < owners.length; i++) {
-    if (owners[i] === target) {
-      const out = lines.slice();
-      out[i] = `${out[i]} ${TARGET_TAG}`;
-      return out;
+    if (owners[i] === targetEl) {
+      return { line: i + 1, description: stripLeading(lines[i]), folded: false };
     }
   }
-  // fallback: nearest rendered ancestor
-  let cur: Element | null = target.parentElement;
+  // folded: walk parent chain until we hit a rendered owner; describe that.
+  let cur: Element | null = targetEl.parentElement;
   while (cur) {
     for (let i = 0; i < owners.length; i++) {
       if (owners[i] === cur) {
-        const indent = leadingSpaces(lines[i]) + 2;
-        const synthLine = `${" ".repeat(indent)}${describeTarget(target)} ${TARGET_TAG}`;
-        return [...lines.slice(0, i + 1), synthLine, ...lines.slice(i + 1)];
+        return { line: i + 1, description: stripLeading(lines[i]), folded: true };
       }
     }
     cur = cur.parentElement;
@@ -70,40 +48,10 @@ function buildTargetedLines(
   return null;
 }
 
-function leadingSpaces(line: string): number {
+function stripLeading(line: string): string {
   let n = 0;
   while (n < line.length && line[n] === " ") n++;
-  return n;
-}
-
-/** One-line readPretty-style description for `el`, used when its natural line
- *  was folded out of the tree. */
-function describeTarget(el: Element): string {
-  const tag = (el.tagName || "div").toLowerCase();
-  const attrs: string[] = [];
-  const attrNames = [
-    "role", "aria-label", "aria-disabled", "aria-expanded", "aria-checked",
-    "aria-selected", "aria-pressed", "disabled", "checked", "href", "type",
-    "name", "for", "placeholder",
-  ];
-  for (const name of attrNames) {
-    if (!el.hasAttribute(name)) continue;
-    const v = el.getAttribute(name) ?? "";
-    if (v === "false" && (name.startsWith("aria-") || name === "disabled" || name === "checked")) continue;
-    if (v === "" || v === name) attrs.push(name);
-    else attrs.push(`${name}=${quote(v)}`);
-  }
-  if (tag === "input" || tag === "textarea") {
-    const val = (el as HTMLInputElement).value;
-    if (val) attrs.push(`value=${quote(val)}`);
-  }
-  return `${tag}${attrs.length ? `[${attrs.join(" ")}]` : ""}`;
-}
-
-function quote(v: string): string {
-  const norm = v.replace(/\s+/g, " ").trim();
-  if (norm.length > 80) return JSON.stringify(norm.slice(0, 80) + "…");
-  return JSON.stringify(norm);
+  return line.slice(n);
 }
 
 export function getEventTargetId(ev: RRWebEvent): number | null {

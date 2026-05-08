@@ -32,26 +32,37 @@ export function renderList(resp: ListResponse, summary: string): string {
 
   out.push("");
   out.push(
-    `${pad("id", idW)}  ${pad("event", evW)}  ${pad("time", tW)}  diff`,
+    `${pad("id", idW)}  ${pad("event", evW)}  ${pad("time", tW)}  readpretty diff/target`,
   );
   out.push(`${"-".repeat(idW)}  ${"-".repeat(evW)}  ${"-".repeat(tW)}  ${"-".repeat(40)}`);
   for (const e of resp.entries) {
     const idCol = pad(idStr(e), idW);
     const evCol = pad(e.event, evW);
     const tCol = pad(timeStr(e), tW);
+    const headPad = `${idCol}  ${evCol}  ${tCol}  `;
+    const cont = " ".repeat(headPad.length);
+
+    if (e.target) {
+      out.push(`${headPad}→ line ${e.target.line}: ${e.target.description}`);
+      continue;
+    }
+    const arg = e.endId != null && e.endId !== e.id ? `${e.id}-${e.endId}` : String(e.id);
+    if (e.event === "FullSnapshot") {
+      // FullSnapshot reseeds the whole tree; a unified diff against the
+      // prior state is rarely what the reader wants. Point at `detail`.
+      out.push(`${headPad}use \`detail ${arg}\` for the full readPretty tree`);
+      continue;
+    }
     if (!e.diffPreview) {
-      out.push(`${idCol}  ${evCol}  ${tCol}  (no diff)`);
+      out.push(`${headPad}(no diff)`);
       continue;
     }
     const previewLines = e.diffPreview.split("\n");
-    const headPad = `${idCol}  ${evCol}  ${tCol}  `;
-    const cont = " ".repeat(headPad.length);
     out.push(`${headPad}${previewLines[0]}`);
     for (let i = 1; i < previewLines.length; i++) {
       out.push(`${cont}${previewLines[i]}`);
     }
     if (e.diffPreviewDropped > 0) {
-      const arg = e.endId != null && e.endId !== e.id ? `${e.id}-${e.endId}` : String(e.id);
       out.push(`${cont}… (+${e.diffPreviewDropped} more line(s); use \`diff ${arg}\` for the full diff)`);
     }
   }

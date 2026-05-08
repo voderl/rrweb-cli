@@ -54,6 +54,22 @@ export interface RRWebEventBase {
 
 export type RRWebEvent = RRWebEventBase;
 
+/** For non-mutating but targeted events (Click, Focus, Scroll, …): a
+ *  one-line pointer that says "the user acted on this readPretty line". */
+export interface LocatorInfo {
+  /** 1-based line number in the readPretty tree (the state when the event
+   *  fired). Lets the caller cross-reference with `detail <id>`.
+   *  When the target was folded out by readPretty's collapsing rules, this
+   *  is the line of the nearest rendered ancestor (the "owner"). */
+  line: number;
+  /** readPretty rendering of that line, with leading indentation stripped.
+   *  When the target was folded, this is the owner's rendering. */
+  description: string;
+  /** true when the target itself isn't in the readPretty tree and we fell
+   *  back to the nearest owner. */
+  folded: boolean;
+}
+
 export interface ListEntry {
   /** representative id for this row. For a merged group, the first id. */
   id: number;
@@ -66,13 +82,17 @@ export interface ListEntry {
   time: number;
   /** for merged groups, end time. undefined when single event. */
   endTime?: number;
-  /** unified-style diff truncated to first 5 lines. Empty string if no diff. */
+  /** unified-style diff truncated to first 5 lines. Empty string when the
+   *  row has no DOM-mutation diff (locator-only rows or no-op rows). */
   diffPreview: string;
   /** total diff line count (excluding the @@ header) for callers that want to know more. */
   diffLines: number;
   /** number of output lines (any kind, incl. context and @@) that were
    *  cut from `diffPreview` because the row exceeded the preview cap. */
   diffPreviewDropped: number;
+  /** present on locator-only rows (Click/Focus/Scroll/… without a DOM diff).
+   *  Mutually exclusive with diffPreview in practice. */
+  target?: LocatorInfo;
 }
 
 export interface ListResponse {

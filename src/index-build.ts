@@ -9,7 +9,7 @@ import { eventLabel, isKeyInteraction, isMouseMove } from "./event-name";
 import { renderPretty, renderHtml } from "./pretty";
 import { diffLines } from "./diff";
 import { buildLocator, getEventTargetId } from "./locator";
-import { EventType, RRWebEvent } from "./types";
+import { EventType, LocatorInfo, RRWebEvent } from "./types";
 
 export interface IndexedEvent {
   /** 1-based id, matching index in events array. */
@@ -26,10 +26,10 @@ export interface IndexedEvent {
   diff: string;
   diffLines: number;
   /** for events that don't mutate DOM but still address a node (Click,
-   *  Focus, Blur, Scroll, …): a short, diff-styled locator describing where
-   *  the target sits in the page. null when the event has no addressable
+   *  Focus, Blur, Scroll, …): a structured pointer at the readPretty line
+   *  that represents the target. null when the event has no addressable
    *  target or its target node has been removed. */
-  locator: string | null;
+  locator: LocatorInfo | null;
   /** the rrweb node id this locator points at, when known. used by list
    *  merging to coalesce same-target event chains (e.g. MouseDown+Click). */
   targetId: number | null;
@@ -100,9 +100,9 @@ export function buildIndex(events: RRWebEvent[]): RRWebIndex {
     }
 
     // for non-mutating but targeted events (clicks, focus, …), produce a
-    // locator string only when the event itself produced no diff. If the
-    // event already has a real diff there's no need for the redundant marker.
-    let locator: string | null = null;
+    // locator only when the event itself produced no diff. If the event
+    // already has a real diff the mutation is the more interesting signal.
+    let locator: LocatorInfo | null = null;
     let targetId: number | null = null;
     if (state && diffLn === 0 && !isMouseMove(ev)) {
       locator = buildLocator(ev, state.mirror, state.doc);
