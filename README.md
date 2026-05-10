@@ -1,30 +1,41 @@
 # rrweb-cli
 
 Agent-friendly CLI for parsing, listing, and diffing
-[rrweb](https://www.rrweb.io/) session recordings (json files).
+[rrweb](https://www.rrweb.io/) session recordings (json files). Useful for
+tracing what a user did and how the page changed in response, and pairs
+naturally with [har-cli](https://github.com/voderl/har-cli) for end-to-end
+webpage analysis — rrweb-cli covers DOM and user interactions, har-cli
+covers the network side.
 
-## What it does
+## Install
 
-Given an rrweb recording (an array of events, or `{ events: [...] }`):
+Requires Node.js ≥ 18.
 
-- Reconstructs the DOM tree using the official `rrweb-snapshot` package on top
-  of a `jsdom` Document, then applies each incremental mutation in order.
-- After every event, formats the resulting DOM into a *readPretty* tree —
-  a hierarchical, innerText-leaning rendering that drops decorative wrappers
-  but preserves semantic attributes (`role`, `aria-*`, `disabled`, `href`,
-  form `placeholder` / `value`, …) and atomic tags (`img`, `svg`, …).
-- Computes a unified-style diff between the readPretty tree before and after
-  each event.
-- For events that don't move the DOM but still address a node (Click, Focus,
-  Scroll, …), produces a unified-diff-style locator that marks the target
-  line with `[Target]`.
-- Folds noise: consecutive same-source events within a 1s gap merge into one
-  row (`Mutation(×7)`); chains of locator events on the *same target* merge
-  into `MouseDown+Focus+MouseUp+Click`.
+```bash
+# one-shot via npx (no install)
+npx rrweb-cli -f recording.json
 
-Because reconstructing the DOM for a long recording is expensive, large files
-are served by a **per-file daemon** keyed by `<absolute path, size, mtime>`
-hash; daemons self-destruct after **10 minutes of inactivity**.
+# or install globally and use the `rrweb-cli` binary
+npm install -g rrweb-cli
+```
+
+## Example
+
+A typical session: hand a recording to your coding agent and ask what the
+user did. The agent drives `rrweb-cli` itself — `list` for an overview, then
+`detail` / `diff` to zoom in.
+
+> **You:** Analyze the user flow in `demo.json`.
+>
+> **Agent:** The user searched **`hello~`** on Google and browsed the
+> results. Full path (~29s, 62 events):
+>
+> 1. `0.0s` — Loaded `https://www.google.com/`
+> 2. `1.8s` — Clicked the search box (dropdown opened)
+> 3. `5.7–8.7s` — Typed `h → he → hel → hell → hello → hello~`
+> 4. `16.6s` — Submitted; results page loaded
+> 5. `22.3s` — Re-clicked the search box, then dismissed the dropdown
+> 6. `24.5–26.1s` — Scrolled through results (Wikipedia, Merriam-Webster…)
 
 ## Getting a recording
 
@@ -67,51 +78,76 @@ You'll get `<session-id>.json` in your Downloads folder — feed it to
 Any rrweb json file works (an array of events or `{ events: [...] }`); the
 extension is just one convenient source.
 
-## Install / build
-
-```bash
-npm install
-npm run build
-```
-
 ## Usage
+
+The CLI is designed to be driven by a coding agent. Point your agent at a
+recording file and it can list events, inspect any one in detail, or diff
+the DOM around a specific moment.
 
 ```bash
 # default: list events that have a readPretty diff or are a key gesture
 # (Click / DblClick / ContextMenu); other no-diff events (MouseDown,
 # MouseUp, Focus, Blur, Scroll, MouseMove, …) are filtered out, and
 # adjacent same-name runs are merged.
-node dist/cli.js -f recording.json
+rrweb-cli -f recording.json
 
 # include everything except MouseMove (Mouse/Focus/Blur/Scroll all show up)
-node dist/cli.js -f recording.json list --all
+rrweb-cli -f recording.json list --all
 
 # also include MouseMove
-node dist/cli.js -f recording.json list --all --mousemove
+rrweb-cli -f recording.json list --all --mousemove
 
 # filter (an explicit --id disables merging — exact rows back)
-node dist/cli.js -f recording.json list -e Input,Click
-node dist/cli.js -f recording.json list --time 1.0-5.0
-node dist/cli.js -f recording.json list --id 9,12
-node dist/cli.js -f recording.json list --id 9-16
+rrweb-cli -f recording.json list -e Input,Click
+rrweb-cli -f recording.json list --time 1.0-5.0
+rrweb-cli -f recording.json list --id 9,12
+rrweb-cli -f recording.json list --id 9-16
+
+# pagination (default: page 1, 50 rows/page)
+rrweb-cli -f recording.json list -p 2 --page-size 100
 
 # inspect a specific event
-node dist/cli.js -f recording.json detail 9             # readPretty AFTER the event
-node dist/cli.js -f recording.json detail 9 --before    # readPretty BEFORE the event
-node dist/cli.js -f recording.json detail 9 --html      # innerHTML form
-node dist/cli.js -f recording.json detail 9 --raw       # raw rrweb event json
+rrweb-cli -f recording.json detail 9             # readPretty AFTER the event
+rrweb-cli -f recording.json detail 9 --before    # readPretty BEFORE the event
+rrweb-cli -f recording.json detail 9 --html      # innerHTML (style/svg collapsed)
+rrweb-cli -f recording.json detail 9 --raw-html  # innerHTML, style/svg verbatim
+rrweb-cli -f recording.json detail 9 --raw       # raw rrweb event json
 
 # unified diffs (default: readPretty)
-node dist/cli.js -f recording.json diff 9               # diff for one event
-node dist/cli.js -f recording.json diff 9-16            # range diff (before 9 → after 16)
-node dist/cli.js -f recording.json diff 9 --html        # diff the innerHTML form instead
+rrweb-cli -f recording.json diff 9               # diff for one event
+rrweb-cli -f recording.json diff 9-16            # range diff (before 9 → after 16)
+rrweb-cli -f recording.json diff 9 --html        # diff the innerHTML form instead
 
 # json output (list only — detail/diff are always text)
-node dist/cli.js -f recording.json list --format json
+rrweb-cli -f recording.json list --format json
 
 # daemon controls
-node dist/cli.js daemon-clear                            # stop & cleanup
+rrweb-cli daemon-clear                           # stop & cleanup
 ```
+
+## What it does
+
+Given an rrweb recording (an array of events, or `{ events: [...] }`):
+
+- Reconstructs the DOM tree using the official `rrweb-snapshot` package on top
+  of a `jsdom` Document, then applies each incremental mutation in order.
+- After every event, formats the resulting DOM into a *readPretty* tree —
+  a hierarchical, innerText-leaning rendering that drops decorative wrappers
+  but preserves semantic attributes (`role`, `aria-*`, `disabled`, `href`,
+  form `placeholder` / `value`, …) and atomic tags (`img`, `svg`, …).
+- Computes a unified-style diff between the readPretty tree before and after
+  each event.
+- For events that don't move the DOM but still address a node (Click, Focus,
+  Scroll, …), produces a one-line locator pointing at the target's readPretty
+  line (with the nearest rendered ancestor when readPretty folded the target).
+- Folds noise: consecutive same-source events within a 1s gap merge into one
+  row (`Mutation(×7)`); chains of locator events on the *same target* merge
+  into `MouseDown+Focus+MouseUp+Click`.
+
+Because reconstructing the DOM for a long recording is expensive, large files
+are served by a **per-file daemon** keyed by `<absolute path, size, mtime>`
+hash; daemons self-destruct after **10 minutes of inactivity**.
+
 
 ## List columns
 
@@ -120,12 +156,14 @@ node dist/cli.js daemon-clear                            # stop & cleanup
 | `id`   | 1-based event id (matches the input array index + 1). Merged rows show as a range `9-16`. |
 | `event`| rrweb event-type name. For `IncrementalSnapshot` it shows the source (`Mutation`, `Input`, `Scroll`, …); MouseInteraction shows the sub-type (`Click`, `Focus`, `Blur`, …). Merged rows show `Mutation(×7)` for same-source runs and `MouseDown+Focus+MouseUp+Click` for same-target locator chains. |
 | `time` | seconds since the first event (`0.000s` is the first event). Merged rows show a range `2.320-3.626s`. |
-| `diff` | unified-style diff of the readPretty tree. When the change is ≤5 +/- lines it's shown in full; otherwise it's truncated to ~5 body lines with a `(+N more line(s); use \`diff <id>\` for the full diff)` hint. Locator rows (Click/Focus/...) show a `[Target]` marker on the target line and are never truncated. |
+| `diff` | for the list preview, unified-diff context lines are stripped and only `+`/`-` lines are kept. When the change is ≤3 lines it's shown in full; otherwise it's truncated to ~3 lines with a `(+N more line(s); use \`diff <id>\` for the full diff)` hint. Locator rows (Click/Focus/…) instead show `→ line N: <readPretty rendering of the target>` and are never truncated. `FullSnapshot` rows show `use \`detail <id>\` for the full readPretty tree` since a unified diff against the prior state is rarely useful there. |
 
 ## Daemon details
 
-- Threshold: 4 MB. Below it the CLI parses inline; at-or-above it auto-spawns
-  a daemon for the file. (No flag — the choice is automatic.)
+- Threshold: 1 MB. Below it the CLI parses inline; at-or-above it auto-spawns
+  a daemon for the file. If a daemon for the file is already running, every
+  request is routed to it regardless of size. (No flag — the choice is
+  automatic.)
 - Cache key: `sha1(absPath + size + mtimeMs)` — editing the file picks up a
   new daemon automatically.
 - Idle timeout: 10 minutes since the last request.
