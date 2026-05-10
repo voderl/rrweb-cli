@@ -58,6 +58,13 @@ function mergeSameLabelKeepLocators(events: IndexedEvent[]): Row[] {
   let i = 0;
   while (i < events.length) {
     const e = events[i];
+    if (e.metaHref != null) {
+      // Each Meta event carries its own href; never fold consecutive Metas
+      // together since that would hide individual navigations.
+      rows.push(singleton(e));
+      i++;
+      continue;
+    }
     if (e.locator) {
       // collapse same-target locator chain
       let j = i;
@@ -137,7 +144,7 @@ export function listEvents(idx: RRWebIndex, filter: FilterOptions): ListResponse
   for (const e of idx.indexed) {
     if (!includeMM && isMouseMove(e.event)) continue;
     if (!showNoDiff) {
-      const keep = e.diffLines > 0 || e.keyInteraction;
+      const keep = e.diffLines > 0 || e.keyInteraction || e.metaHref != null;
       if (!keep) continue;
     }
     if (filter.startSec != null && e.timeSec < filter.startSec) continue;
@@ -191,6 +198,7 @@ export function listEvents(idx: RRWebIndex, filter: FilterOptions): ListResponse
       diffLines: dl,
       diffPreviewDropped: trunc.droppedLines,
       target,
+      metaHref: first.metaHref ?? undefined,
     });
   }
 

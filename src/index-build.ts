@@ -36,6 +36,9 @@ export interface IndexedEvent {
   /** "high-signal" user gestures (Click / DblClick / ContextMenu) that the
    *  default list view shows even without a readPretty diff. */
   keyInteraction: boolean;
+  /** for Meta events: the href the page navigated to. null otherwise.
+   *  Surfaced by the default list so navigation is visible at a glance. */
+  metaHref: string | null;
 }
 
 export interface RRWebIndex {
@@ -109,6 +112,10 @@ export function buildIndex(events: RRWebEvent[]): RRWebIndex {
       if (locator) targetId = getEventTargetId(ev);
     }
     const keyInteraction = isKeyInteraction(ev);
+    const metaHref =
+      ev.type === EventType.Meta && typeof ev.data?.href === "string"
+        ? (ev.data.href as string)
+        : null;
 
     indexed.push({
       id: i + 1,
@@ -122,6 +129,7 @@ export function buildIndex(events: RRWebEvent[]): RRWebIndex {
       locator,
       targetId,
       keyInteraction,
+      metaHref,
     });
     if (diffLn > 0) withDiffIds.push(i + 1);
     prevPretty = prettyAfter;

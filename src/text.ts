@@ -46,6 +46,17 @@ export function renderList(resp: ListResponse, summary: string): string {
       out.push(`${headPad}→ line ${e.target.line}: ${e.target.description}`);
       continue;
     }
+    if (e.metaHref) {
+      const META_HREF_PREVIEW = 80;
+      if (e.metaHref.length <= META_HREF_PREVIEW) {
+        out.push(`${headPad}→ ${e.metaHref}`);
+      } else {
+        out.push(
+          `${headPad}→ ${e.metaHref.slice(0, META_HREF_PREVIEW)}… (use \`detail ${e.id} --raw\` for full url)`,
+        );
+      }
+      continue;
+    }
     const arg = e.endId != null && e.endId !== e.id ? `${e.id}-${e.endId}` : String(e.id);
     if (e.event === "FullSnapshot") {
       // FullSnapshot reseeds the whole tree; a unified diff against the

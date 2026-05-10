@@ -93,6 +93,8 @@ export interface ListEntry {
   /** present on locator-only rows (Click/Focus/Scroll/… without a DOM diff).
    *  Mutually exclusive with diffPreview in practice. */
   target?: LocatorInfo;
+  /** present on Meta rows: the href the page navigated to. */
+  metaHref?: string;
 }
 
 export interface ListResponse {
