@@ -13,7 +13,7 @@ function padLeft(s: string, n: number): string {
 export function renderList(resp: ListResponse, summary: string): string {
   const out: string[] = [];
   if (summary) out.push(summary);
-  out.push(`total=${resp.total} shown=${resp.shown} page=${resp.page}/${Math.max(1, Math.ceil(resp.total / resp.pageSize))}`);
+  const totalPages = Math.max(1, Math.ceil(resp.total / resp.pageSize));
   if (resp.entries.length === 0) {
     out.push("(no events match)");
     return out.join("\n");
@@ -30,7 +30,7 @@ export function renderList(resp: ListResponse, summary: string): string {
   const evW = Math.max(5, ...resp.entries.map((e) => e.event.length));
   const tW = Math.max(7, ...resp.entries.map((e) => timeStr(e).length));
 
-  out.push("");
+  if (summary) out.push("");
   out.push(
     `${pad("id", idW)}  ${pad("event", evW)}  ${pad("time", tW)}  readpretty diff/target`,
   );
@@ -76,6 +76,13 @@ export function renderList(resp: ListResponse, summary: string): string {
     if (e.diffPreviewDropped > 0) {
       out.push(`${cont}… (+${e.diffPreviewDropped} more line(s); use \`diff ${arg}\` for the full diff)`);
     }
+  }
+  if (resp.page < totalPages) {
+    const remaining = resp.total - resp.page * resp.pageSize;
+    out.push("");
+    out.push(
+      `(… ${remaining} more event(s). total=${resp.total} page=${resp.page}/${totalPages}; use \`list --page ${resp.page + 1}\` for the next page.)`,
+    );
   }
   return out.join("\n");
 }
