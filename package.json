@@ -1,6 +1,6 @@
 {
   "name": "rrweb-cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Agent-friendly CLI for parsing, listing, and diffing rrweb session recordings.",
   "bin": {
     "rrweb-cli": "dist/cli.js"
