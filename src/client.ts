@@ -12,7 +12,7 @@ import {
 } from "./version";
 
 const CONNECT_TIMEOUT_MS = 1000;
-const SPAWN_WAIT_TIMEOUT_MS = 30_000;
+const SPAWN_WAIT_TIMEOUT_MS = 300_000;
 
 function connect(socketPath: string, timeoutMs: number): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
